@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>探秘炳灵胜境 </title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        @font-face {
+            font-family: "FZSongKeBenXiuKaiS-R-GB";
+            src: local("FZSongKeBenXiuKaiS-R-GB"), local("方正宋刻本秀楷简体");
+            font-display: swap;
+        }
+
+        :root { 
+            --cursor-x: 50vw; 
+            --cursor-y: 50vh; 
+            --gold: #d4af37;
+            --panel-bg: rgba(15, 15, 15, 0.85);
+        }
+        body { margin: 0; background: #000; overflow: hidden; font-family: "Noto Sans SC", "PingFang SC", sans-serif; cursor: none; }
+
+        /* 背景基础层 */
+        .mural-base {
+            position: absolute;
+            inset: 0;
+            background-image: url('https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%89%8D%E6%99%AF1-16%E6%AF%949.jpg');
+            background-size: cover;
+            background-position: center;
+            z-index: 1;
+            filter: brightness(0);
+            transition: filter 1.5s ease;
+        }
+
+        .mural-active .mural-base { filter: brightness(1); }
+        .mural-ready .mural-base { filter: brightness(1); }
+        .mural-dimming .mural-base { filter: brightness(0.16); }
+        .cleaning-active .mural-base {
+            filter: brightness(1);
+            background-image: url('https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%8E%9F%E7%A8%BF16%E6%AF%949.jpg');
+        }
+
+        /* 遮罩层 */
+        .mural-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 1.5s ease;
+        }
+
+        .mural-active .mural-overlay { opacity: 1; }
+
+        /* 探照灯层 */
+        .mural-reveal {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            overflow: hidden;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+
+        .mural-active .mural-reveal { opacity: 1; }
+
+        #poi-marker-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 7;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .mural-active #poi-marker-layer { visibility: visible; }
+
+        .poi-marker {
+            position: absolute;
+            left: var(--point-x);
+            top: var(--point-y);
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.65);
+            transition: opacity 0.2s ease, transform 0.25s ease;
+        }
+
+        .poi-marker::before,
+        .poi-marker::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .poi-marker::before {
+            width: 34px;
+            height: 34px;
+            background: radial-gradient(circle, rgba(255, 220, 112, 0.58) 0%, rgba(242, 184, 54, 0.25) 35%, rgba(212, 175, 55, 0) 74%);
+            filter: blur(1px);
+        }
+
+        .poi-marker::after {
+            width: 8px;
+            height: 8px;
+            background: #fff0b0;
+            box-shadow: 0 0 5px 2px #ffd85b, 0 0 13px 5px rgba(242, 184, 54, 0.88);
+        }
+
+        .poi-marker.nearby {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .poi-marker.nearby::before { animation: poi-glow 1.25s ease-in-out infinite; }
+        .poi-marker.nearby::after { animation: poi-core 0.85s ease-in-out infinite alternate; }
+
+        @keyframes poi-glow {
+            0%, 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(0.72); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.28); }
+        }
+
+        @keyframes poi-core {
+            from { opacity: 0.62; box-shadow: 0 0 4px 1px #ffd85b, 0 0 9px 3px rgba(242, 184, 54, 0.65); }
+            to { opacity: 1; box-shadow: 0 0 7px 3px #fff0a5, 0 0 16px 7px rgba(242, 184, 54, 0.95); }
+        }
+
+        /* 蒙尘壁画覆盖在待显现的前景图上，手势擦除透明度。 */
+        #dust-canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 4;
+            width: 100vw;
+            height: 100vh;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.4s ease-in-out;
+        }
+
+        .dust-active #dust-canvas { opacity: 1; }
+        .dust-cleared #dust-canvas { opacity: 0; }
+        .cleaning-active #dust-canvas { opacity: 1; }
+        /* 第一阶段完成后，让残留的蒙尘层柔和淡出，衔接到下一画面。 */
+        .cleaning-transition #dust-canvas { opacity: 0; }
+
+        #dust-guide {
+            position: absolute;
+            z-index: 6;
+            bottom: 9vh;
+            left: 50%;
+            width: calc(100vw - 32px);
+            transform: translateX(-50%);
+            color: transparent;
+            font-family: "FZSongKeBenXiuKaiS-R-GB", "方正宋刻本秀楷简体", serif;
+            font-size: clamp(20px, 2.2vw, 30px);
+            letter-spacing: 0.18em;
+            text-align: center;
+            background: linear-gradient(105deg, #805b16 0%, #f5d978 22%, #fff2af 42%, #c58b22 62%, #ffe89a 82%, #8d6318 100%);
+            background-size: 220% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            text-shadow: none;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+        }
+
+        .dust-active #dust-guide {
+            opacity: 1;
+            /* 与动画最后一帧保持一致，动画结束后颜色不跳变。 */
+            clip-path: inset(0 0 0 0);
+            filter: brightness(1);
+            background-position: 100% 0;
+        }
+        .dust-cleared #dust-guide { opacity: 0; }
+        .dust-intro #dust-guide {
+            /* 等画面完成 1.4 秒柔和衔接后，再用 6 秒完成文字动画。 */
+            animation: dust-guide-reveal 6s cubic-bezier(0.22, 0.72, 0.3, 1) 1.4s both, dust-guide-shine 6s ease-in-out 1.4s both;
+        }
+
+        @keyframes dust-guide-reveal {
+            from { clip-path: inset(0 100% 0 0); filter: brightness(0.7); }
+            70% { filter: brightness(1.45); }
+            to { clip-path: inset(0 0 0 0); filter: brightness(1); }
+        }
+
+        @keyframes dust-guide-shine {
+            from { background-position: 100% 0; }
+            55% { background-position: 0 0; }
+            to { background-position: 100% 0; }
+        }
+
+        #clean-guide {
+            position: absolute;
+            z-index: 6;
+            left: 50%;
+            bottom: 9vh;
+            width: calc(100vw - 32px);
+            transform: translateX(-50%);
+            color: #f3dfaa;
+            font-family: "FZSongKeBenXiuKaiS-R-GB", "方正宋刻本秀楷简体", serif;
+            font-size: clamp(20px, 2.2vw, 30px);
+            letter-spacing: 0.18em;
+            text-align: center;
+            text-shadow: 0 2px 16px rgba(0, 0, 0, 0.95), 0 0 24px rgba(212, 175, 55, 0.42);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+        }
+
+        .cleaning-active #clean-guide { opacity: 1; }
+
+        .mural-reveal img {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            -webkit-mask-image: radial-gradient(
+                circle 115px at var(--cursor-x) var(--cursor-y), 
+                black 0%, 
+                rgba(0,0,0,0.95) 30%, 
+                rgba(0,0,0,0.4) 70%, 
+                transparent 100%
+            );
+            mask-image: radial-gradient(
+                circle 115px at var(--cursor-x) var(--cursor-y), 
+                black 0%, 
+                rgba(0,0,0,0.95) 30%, 
+                rgba(0,0,0,0.4) 70%, 
+                transparent 100%
+            );
+        }
+
+        /* 抓取引导组 */
+        #entry-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 110;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        #grab-loader {
+            transform: rotate(-90deg);
+            display: block;
+        }
+
+        .grab-indicator {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+        }
+
+        .grab-hand-gif {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            transform: translate(-50%, -50%);
+            filter: drop-shadow(0 0 8px rgba(255, 207, 83, 0.62));
+        }
+
+        #grab-loader circle {
+            fill: none;
+            stroke: var(--gold);
+            stroke-width: 2;
+            stroke-dasharray: 251.2; 
+            stroke-dashoffset: 251.2;
+            transition: stroke-dashoffset 0.1s linear;
+        }
+
+        .guide-text {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            color: transparent;
+            font-family: "FZSongKeBenXiuKaiS-R-GB", "方正宋刻本秀楷简体", serif;
+            font-size: 22px;
+            font-weight: 400;
+            line-height: 1.35;
+            letter-spacing: 0.16em;
+            text-align: center;
+            background: linear-gradient(110deg, #8f6414 0%, #f8e7a1 30%, #d4af37 55%, #fff3b0 78%, #a87519 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            text-shadow: 0 0 12px rgba(212, 175, 55, 0.32);
+            animation: breath 2s infinite ease-in-out;
+            opacity: 0.8;
+            white-space: nowrap;
+        }
+
+        @keyframes breath {
+            0%, 100% { opacity: 0.4; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        /* 文物面板 */
+        #info-panel {
+            position: absolute;
+            width: min(240px, calc(100vw - 24px));
+            height: min(248px, calc(100vh - 32px));
+            box-sizing: border-box;
+            padding: 0;
+            color: #d9bd78;
+            /* SVG 自带透明画布：只有圆角金框内部有棕色填充，框外保持完全透明；云纹叠在框上方。 */
+            background-image: url('https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E6%96%87%E7%89%A9%E9%9D%A2%E6%9D%BF.svg');
+            background-position: center;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+
+        #info-panel.visible { opacity: 1; transform: translateY(0); }
+
+        #info-panel > div:first-child {
+            display: none;
+        }
+
+        #info-title {
+            position: absolute;
+            top: 19.3%;
+            left: 13.6%;
+            right: 4.6%;
+            height: 20%;
+            margin: 0;
+            color: #e3c77e;
+            font-family: "FZSongKeBenXiuKaiS-R-GB", "方正宋刻本秀楷简体", serif;
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.45;
+            letter-spacing: 0.06em;
+            text-shadow: 0 1px 8px rgba(196, 153, 62, 0.18);
+            overflow: hidden;
+        }
+
+        #info-content {
+            position: absolute;
+            /* 与 SVG 中分隔线的整体范围 x=24..168 对齐。 */
+            top: 52%;
+            left: 13.6%;
+            right: 4.6%;
+            bottom: 11.7%;
+            margin: 0;
+            color: #d2b773;
+            font-family: "FZSongKeBenXiuKaiS-R-GB", "方正宋刻本秀楷简体", serif;
+            font-size: 9.5px;
+            line-height: 1.75;
+            letter-spacing: 0.04em;
+            text-align: justify;
+            text-shadow: 0 1px 5px rgba(0, 0, 0, 0.28);
+            overflow: hidden;
+        }
+
+        @media (max-width: 560px) {
+            #info-panel {
+                width: min(220px, calc(100vw - 20px));
+                height: min(227px, calc(100vh - 32px));
+            }
+
+            #info-title { font-size: 13px; }
+            #info-content { font-size: 8.5px; line-height: 1.7; }
+            #dust-guide { bottom: 8vh; font-size: 19px; letter-spacing: 0.1em; }
+            #clean-guide { bottom: 8vh; font-size: 19px; letter-spacing: 0.1em; }
+            .guide-text { font-size: 18px; letter-spacing: 0.1em; white-space: normal; }
+        }
+
+        /* 预览窗 */
+        .camera-container {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            width: 160px;
+            height: 120px;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            border-radius: 12px;
+            z-index: 100;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: border-color 0.3s ease;
+        }
+
+        .camera-container.active {
+            border-color: var(--gold);
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+        }
+
+        #webcam-preview {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            object-fit: cover;
+            filter: blur(12px) brightness(0.5);
+            opacity: 0.8;
+        }
+
+        #skeleton-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            z-index: 2;
+        }
+
+        .camera-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 40%);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 8px;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .camera-tag {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0 4px;
+            font-size: 8px;
+            line-height: 1.35;
+            color: var(--gold);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            opacity: 0.9;
+            font-weight: bold;
+            text-align: center;
+            white-space: normal;
+        }
+
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: #050505;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: var(--gold);
+        }
+
+        .loader-title {
+            margin-bottom: 24px;
+            font-size: 1.875rem;
+            font-weight: 300;
+            letter-spacing: 0.8em;
+        }
+
+        .loader-track {
+            position: relative;
+            width: 16rem;
+            height: 1px;
+            background: #1f2937;
+        }
+
+        #progress {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 0;
+            background: #ca8a04;
+            transition: width 0.3s ease;
+        }
+    </style>
+<base target="_blank">
+</head>
+<body class="mural-inactive">
+
+    <div id="loader">
+        <div class="loader-title">探秘炳灵胜境</div>
+        <div class="loader-track">
+            <div id="progress"></div>
+        </div>
+    </div>
+
+    <!-- 入口引导组合 -->
+    <div id="entry-guide" style="opacity: 0;">
+        <div class="grab-indicator" aria-hidden="true">
+            <svg id="grab-loader" width="100" height="100">
+                <circle cx="50" cy="50" r="40"></circle>
+            </svg>
+            <img class="grab-hand-gif" src="grab-hand.gif" alt="手势抓取动态引导">
+        </div>
+        <div class="guide-text">
+            <span>画已入窟</span>
+            <span>抓取2秒，点灯探炳灵胜境</span>
+        </div>
+    </div>
+
+    <div class="mural-base"></div>
+    <div class="mural-overlay"></div>
+    <canvas id="dust-canvas" aria-hidden="true"></canvas>
+    <div id="clean-guide">古画沾污，请抬手涤净，拭去尘瑕</div>
+    <div id="dust-guide">壁画蒙尘，请伸手轻挥，拂尘显像</div>
+
+    <div class="mural-reveal">
+        <img id="reveal-image" src="https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%90%8E%E6%99%AF1-%E9%AB%98%E6%B8%85%E6%B7%B7%E5%90%88.jpg" alt="高清混合壁画涂层">
+    </div>
+    <div id="poi-marker-layer" aria-hidden="true"></div>
+
+    <div id="info-panel">
+        <div class="text-[10px] uppercase tracking-[2px] opacity-60 mb-2">文物志 · 典藏</div>
+        <h2 id="info-title"></h2>
+        <p id="info-content"></p>
+    </div>
+
+    <!-- 预览窗 -->
+    <div class="camera-container" id="cam-box">
+        <video id="webcam-preview" autoplay playsinline></video>
+        <canvas id="skeleton-canvas"></canvas>
+        <div class="camera-overlay">
+            <div class="camera-tag" id="status-tag">手势交互系统</div>
+        </div>
+    </div>
+
+    <script>
+        let targetX = window.innerWidth / 2, targetY = window.innerHeight / 2;
+        let currentX = window.innerWidth / 2, currentY = window.innerHeight / 2;
+
+        let bgm, fireSound, discoverySound;
+        let isSystemStarted = false; 
+        let isHandDetected = false;
+        let currentVolume = 0.3; // 初始音量 30%
+        let interactionPhase = 'loading';
+        let dustImage = null;
+        let dustContext = document.getElementById('dust-canvas').getContext('2d');
+        let dustCanvasInitialized = false;
+        let lastWipePoint = null;
+        const wipeColumns = 36;
+        const wipeRows = 24;
+        const wipedCells = new Uint8Array(wipeColumns * wipeRows);
+        let lastWipeCoverageCheck = 0;
+        let lastActiveId = null;
+        let triggerTimer = null;
+        let grabProgress = 0; 
+        const GRAB_DURATION = 2000; 
+        let lastGrabTime = 0;
+        let audioContextUnlocked = false;
+        let noHandTimer = null;
+        let noHandCountdown = 6;
+        // 倒计时返回第一阶段后，若仍未检测到手，先只保留状态提示，避免立即再次倒计时。
+        let holdNoHandStatusAfterReturn = false;
+
+        function canCountDownForMissingHand() {
+            return ['cleaning', 'dust-intro', 'dust', 'dimming', 'grab', 'active'].includes(interactionPhase);
+        }
+
+        function clearNoHandCountdown() {
+            if (noHandTimer) {
+                clearInterval(noHandTimer);
+                noHandTimer = null;
+            }
+            noHandCountdown = 6;
+        }
+
+        function showNoHandStatus(statusTag, seconds) {
+            if (!statusTag) return;
+            statusTag.innerHTML = `没有识别到手势<br><span>${seconds}秒后返回</span>`;
+        }
+
+        function startNoHandCountdown(statusTag) {
+            if (!canCountDownForMissingHand() || noHandTimer) return;
+
+            noHandCountdown = 6;
+            showNoHandStatus(statusTag, noHandCountdown);
+            noHandTimer = setInterval(() => {
+                if (isHandDetected || !canCountDownForMissingHand()) {
+                    clearNoHandCountdown();
+                    return;
+                }
+                noHandCountdown -= 1;
+                if (noHandCountdown <= 0) {
+                    clearNoHandCountdown();
+                    returnToCleaningStage();
+                    return;
+                }
+                showNoHandStatus(statusTag, noHandCountdown);
+            }, 1000);
+        }
+
+        function returnToCleaningStage() {
+            clearNoHandCountdown();
+            holdNoHandStatusAfterReturn = true;
+            isSystemStarted = false;
+            isHandDetected = false;
+            interactionPhase = 'resetting';
+            lastGrabTime = 0;
+            grabProgress = 0;
+            lastWipePoint = null;
+            clearPOISelection();
+
+            const panel = document.getElementById('info-panel');
+            if (panel) panel.classList.remove('visible');
+            const entryGuide = document.getElementById('entry-guide');
+            if (entryGuide) {
+                entryGuide.style.opacity = '0';
+                entryGuide.style.display = '';
+            }
+            const circle = document.querySelector('#entry-guide circle');
+            if (circle) circle.style.strokeDashoffset = '251.2';
+            document.body.classList.remove('mural-active', 'mural-ready', 'mural-dimming', 'grab-ready', 'dust-cleared', 'dust-intro', 'dust-active', 'cleaning-transition');
+            document.body.classList.add('cleaning-active');
+            const statusTag = document.getElementById('status-tag');
+            if (statusTag) statusTag.innerText = '没有识别到手势';
+            beginCleaningStage();
+        }
+
+        function resetWipeCanvas() {
+            dustCanvasInitialized = false;
+            lastWipePoint = null;
+            wipedCells.fill(0);
+            lastWipeCoverageCheck = 0;
+            const canvas = document.getElementById('dust-canvas');
+            dustContext = canvas.getContext('2d');
+            dustContext.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function finishLoadingStage() {
+            const loader = document.getElementById('loader');
+            if (!loader) return;
+            const progressEl = document.getElementById('progress');
+            if (progressEl) progressEl.style.width = '100%';
+            loader.style.opacity = '0';
+            setTimeout(() => loader.remove(), 1000);
+        }
+
+        function beginCleaningStage() {
+            const image = new Image();
+            image.onload = () => {
+                dustImage = image;
+                resetWipeCanvas();
+                resizeDustCanvas();
+                interactionPhase = 'cleaning';
+                document.body.classList.add('cleaning-active');
+                finishLoadingStage();
+            };
+            image.onerror = (error) => {
+                console.error('未处理古画加载失败。', error);
+            };
+            image.src = 'https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E6%9C%AA%E5%A4%84%E7%90%86%E5%8E%9F%E7%A8%BF16%E6%AF%949.jpg';
+        }
+
+        function beginDustStage() {
+            const image = new Image();
+            image.onload = () => {
+                dustImage = image;
+                // 保持上一阶段的同一张原稿画面可见，先完成新画布绘制再切换状态。
+                resetWipeCanvas();
+                resizeDustCanvas();
+                interactionPhase = 'dust-intro';
+                document.body.classList.add('mural-ready', 'dust-active', 'dust-intro');
+                // 先让第二阶段画布在同一张原稿上柔和显现，再切换到底层前景图，避免闪黑或露出错误画面。
+                document.body.classList.remove('cleaning-transition');
+                window.setTimeout(() => {
+                    if (interactionPhase !== 'dust-intro') return;
+                    document.body.classList.remove('cleaning-active');
+                }, 1400);
+                finishLoadingStage();
+                window.setTimeout(() => {
+                    if (interactionPhase !== 'dust-intro') return;
+                    interactionPhase = 'dust';
+                    document.body.classList.remove('dust-intro');
+                }, 7400);
+            };
+            image.onerror = (error) => {
+                console.error('蒙尘壁画加载失败。', error);
+            };
+            image.src = 'https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%8E%9F%E7%A8%BF16%E6%AF%949.jpg';
+        }
+
+        function resizeDustCanvas() {
+            if (!dustImage) return;
+
+            const canvas = document.getElementById('dust-canvas');
+            const previousCanvas = dustCanvasInitialized ? document.createElement('canvas') : null;
+            if (previousCanvas) {
+                previousCanvas.width = canvas.width;
+                previousCanvas.height = canvas.height;
+                previousCanvas.getContext('2d').drawImage(canvas, 0, 0);
+            }
+
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = Math.round(width * dpr);
+            canvas.height = Math.round(height * dpr);
+            dustContext = canvas.getContext('2d');
+            dustContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            if (previousCanvas) {
+                dustContext.drawImage(previousCanvas, 0, 0, width, height);
+            } else {
+                const scale = Math.max(width / dustImage.width, height / dustImage.height);
+                const imageWidth = dustImage.width * scale;
+                const imageHeight = dustImage.height * scale;
+                dustContext.drawImage(dustImage, (width - imageWidth) / 2, (height - imageHeight) / 2, imageWidth, imageHeight);
+            }
+            dustCanvasInitialized = true;
+            lastWipePoint = null;
+        }
+
+        function eraseWithHand(landmarks) {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const palmLandmarks = [0, 5, 9, 13, 17];
+            const center = palmLandmarks.reduce((point, index) => ({
+                x: point.x + landmarks[index].x / palmLandmarks.length,
+                y: point.y + landmarks[index].y / palmLandmarks.length
+            }), { x: 0, y: 0 });
+            const point = { x: (1 - center.x) * width, y: center.y * height };
+            const radius = Math.max(64, Math.min(132, Math.min(width, height) * 0.14));
+
+            const brushStage = interactionPhase === 'cleaning';
+            dustContext.save();
+            dustContext.globalCompositeOperation = 'destination-out';
+            dustContext.lineCap = 'round';
+            dustContext.lineJoin = 'round';
+            if (brushStage) {
+                // 多根长短不一的笔锋叠加，形成毛笔扫过纸面的边缘。
+                const dx = lastWipePoint ? point.x - lastWipePoint.x : 0;
+                const dy = lastWipePoint ? point.y - lastWipePoint.y : 0;
+                const length = Math.max(1, Math.hypot(dx, dy));
+                const normalX = -dy / length;
+                const normalY = dx / length;
+                for (let bristle = -4; bristle <= 4; bristle++) {
+                    const offset = bristle * radius * 0.12;
+                    dustContext.globalAlpha = 0.36 + (4 - Math.abs(bristle)) * 0.07;
+                    dustContext.lineWidth = radius * (0.22 + (4 - Math.abs(bristle)) * 0.025);
+                    dustContext.beginPath();
+                    dustContext.moveTo(point.x + normalX * offset - dx * 0.18, point.y + normalY * offset - dy * 0.18);
+                    dustContext.lineTo(point.x + normalX * offset + dx * 0.44, point.y + normalY * offset + dy * 0.44);
+                    dustContext.stroke();
+                }
+                dustContext.globalAlpha = 0.58;
+                dustContext.lineWidth = radius * 0.55;
+                dustContext.beginPath();
+                dustContext.arc(point.x, point.y, radius * 0.54, 0, Math.PI * 2);
+                dustContext.fill();
+            } else {
+                dustContext.lineWidth = radius * 2;
+                if (lastWipePoint) {
+                    dustContext.beginPath();
+                    dustContext.moveTo(lastWipePoint.x, lastWipePoint.y);
+                    dustContext.lineTo(point.x, point.y);
+                    dustContext.stroke();
+                }
+                dustContext.beginPath();
+                dustContext.arc(point.x, point.y, radius, 0, Math.PI * 2);
+                dustContext.fill();
+            }
+            dustContext.restore();
+            lastWipePoint = point;
+
+            for (let row = 0; row < wipeRows; row++) {
+                const cellY = (row + 0.5) * height / wipeRows;
+                for (let column = 0; column < wipeColumns; column++) {
+                    const cellIndex = row * wipeColumns + column;
+                    if (wipedCells[cellIndex]) continue;
+                    const cellX = (column + 0.5) * width / wipeColumns;
+                    const dx = cellX - point.x;
+                    const dy = cellY - point.y;
+                    if (dx * dx + dy * dy <= radius * radius) wipedCells[cellIndex] = 1;
+                }
+            }
+
+            const now = Date.now();
+            if (now - lastWipeCoverageCheck > 250) {
+                lastWipeCoverageCheck = now;
+                const coverage = wipedCells.reduce((total, cell) => total + cell, 0) / wipedCells.length;
+                const completionThreshold = interactionPhase === 'cleaning' ? 0.8 : 0.88;
+                if (coverage >= completionThreshold) completeWipeStage();
+            }
+        }
+
+        function completeWipeStage() {
+            if (interactionPhase !== 'cleaning' && interactionPhase !== 'dust') return;
+            if (interactionPhase === 'cleaning') {
+                interactionPhase = 'cleaned';
+                lastWipePoint = null;
+                document.body.classList.add('cleaning-transition');
+                setTimeout(() => {
+                    if (interactionPhase === 'cleaned') beginDustStage();
+                }, 1400);
+                return;
+            }
+            interactionPhase = 'revealed';
+            lastWipePoint = null;
+            document.body.classList.remove('dust-active');
+            document.body.classList.add('dust-cleared');
+
+            setTimeout(() => {
+                if (interactionPhase !== 'revealed') return;
+                interactionPhase = 'dimming';
+                document.body.classList.add('mural-dimming');
+                const entryGuide = document.getElementById('entry-guide');
+                if (entryGuide) entryGuide.style.opacity = '1';
+
+                setTimeout(() => {
+                    if (interactionPhase !== 'dimming') return;
+                    interactionPhase = 'grab';
+                    document.body.classList.add('grab-ready');
+                }, 1800);
+            }, 1000);
+        }
+
+        function resetGrabProgress() {
+            lastGrabTime = 0;
+            grabProgress = 0;
+            const circle = document.querySelector('#entry-guide circle');
+            if (circle) circle.style.strokeDashoffset = '251.2';
+        }
+
+        const POINTS = [
+            { id: 1, x: 27.9, y: 49.3, title: '《法苑珠林·伽蓝篇·感应缘》——[唐]道世', content: '《法苑珠林·伽蓝篇·感应缘》中写道“晋初河州唐述谷寺者。在今河州西北五十里。度风（凤）林津登长夷岭南望名积石山。即禹贡导之极地也。众峰竞出各有异势。或如宝塔。或如层楼。”' },
+            { id: 2, x: 14.7, y: 60.3, title: '河西走廊南段古道起点', content: '这条山间小道，是丝绸之路南段古道遗存，现通青海民和境。古道经天水、临洮、临夏，至炳灵寺渡黄河进入今青海省境，可达河西走廊。这条古道，是中原连通河湟、河西的交通要道，也是当年僧人与商旅往来的必经之路。' },
+            { id: 3, x: 6.3, y: 62.6, title: '炳灵寺・西方境', content: '西方境从顶至底层，共有七座殿堂廊庭。这些建筑是在明成化年间修起的文殊菩萨殿、观音殿、普贤殿、韦驮殿等，体现汉藏信仰并存。西方境以下地带现名曰禅堂，溯源于唐代。清代战乱后建筑皆不存。' },
+            { id: 4, x: 24.9, y: 67.7, title: '薛家昂欠 ——下寺伽蓝活佛府邸', content: '弯曲小道向上可达炳灵寺下寺伽蓝，此处为活佛薛法台的驻锡居所，俗呼薛家昂欠，原有楼阁七间。此地紧邻西方境、禅堂院，处在山间古道之上，是清代下寺区域藏传活佛的居住、行法之地。昂欠为安多藏区活佛府邸专称，这组楼阁建筑现已不存，仅留存遗址地貌。' },
+            { id: 5, x: 40.5, y: 67.3, title: '云家昂欠 ——下寺伽蓝僧舍', content: '与薛家昂欠隔一小沟，即为云法台住地，称作云家昂欠，伽蓝僧舍修建于台地之上。薛、云两处昂欠府邸及配套僧舍，旧时建筑壮观、功能完备，但在文革期间均被拆毁。清末至民国时期，下寺薛、云两位活佛，因争夺水帘洞法床主导权，两派产生分歧，长期发生纠纷。' },
+            { id: 6, x: 38.6, y: 50.9, title: '水帘洞', content: '由薛家昂欠东北小道可达水帘洞，原有两层建筑。明成化三年名“圆觉洞”，弘治元年名“救度洞”，名称记载于明正德十二年《重修灵岩寺碑记》。由于地处西陲，古建屡遭战火，屡建屡毁；民国重修的水帘洞于文革损毁，现由当地群众集资重建。' },
+            { id: 7, x: 50.7, y: 73.8, title: '窝多桥1', content: '沟谷内旧时两座人行小桥，为古代通往老君洞山道必经通道。' },
+            { id: 8, x: 57.1, y: 76.7, title: '窝多桥2', content: '沟谷内旧时两座人行小桥，为古代通往老君洞山道必经通道。' },
+            { id: 9, x: 50.5, y: 36.7, title: '大华山石窟群', content: '巍峨高峻的大华山。山体丹红色的陡峭崖壁上密布石室与栈道，这就是炳灵寺石窟的核心区域。石窟现存编号 184 个窟龛，近 300 身石雕彩塑，记录了炳灵寺自西秦开窟造像的时代变迁。' },
+            { id: 10, x: 52.2, y: 46.7, title: '涅槃佛（第16窟）', content: '第16窟涅槃佛像为北魏泥塑，通长8.6米，历经唐代、明代两次重修重绘，是国内现存唯一的北魏涅槃佛像。原址于1968年刘家峡蓄水后淹没，现搬迁至卧佛殿。' },
+            { id: 11, x: 60.8, y: 39.7, title: '九层佛阁（第171龛）', content: '171龛为唐代弥勒大佛龛，龛前原有九层佛阁，毁于兵灾，明正德年间重修。现已不存。' },
+            { id: 12, x: 57.5, y: 27.6, title: '唐述窟（第169窟）', content: '169 窟开凿于西秦，这也是炳灵寺第一个开窟造像的高峰期。第169窟是一个不规则天然溶蚀洞，4-5世纪持续营建，6-7世纪重修。窟内的建弘题记为国内现存最早石窟纪年铭文。' },
+            { id: 13, x: 64.0, y: 28.0, title: '（第172窟）', content: '第172窟在第169窟北侧的悬崖峭壁上，留存北魏、北周时期造像。窟内留存炳灵寺石窟唯一一处明代木构建筑遗迹。此外，北壁外侧崖壁上现存一铺唐代木栈道中的望柱、勾栏。' },
+            { id: 14, x: 90.4, y: 33.5, title: '通往水滴岭', content: '水滴岭位于炳灵寺下寺东北侧，一条山间小道从此通往此处，山道继续向前可达上寺区域。' },
+            { id: 15, x: 62.0, y: 55.0, title: '姊妹峰', content: '姊妹峰坐落于大寺沟口黄河岸边，两座红砂岩峰相依而立，是炳灵丹霞的标志性景观，也是进入石窟区域的天然门户。' },
+            { id: 16, x: 63.0, y: 70.0, title: '老君洞（第 184 窟）', content: '经窝多桥沿山道上行可达老君洞。考古清理发现洞窟东北壁保存北魏时期佛教壁画，为早期开凿的佛窟，现编号 184，已纳入保护。近代此地曾为道教所用，窟内置道家塑像，见证炳灵寺佛道信仰交融的历史。' },
+            { id: 17, x: 65.0, y: 78.7, title: '时轮金刚塔', content: '谷中原有宝塔一座，名时轮金刚塔。塔高十余米，塔基占地六十多平方米。据志书记载“炳灵寺宝塔，金顶象形日月，日轮在下，月勾在上，遥望之，金光灿烂射目”。清同治壬戌年，即 1862 年变乱中，塔被毁。' },
+            { id: 18, x: 17.8, y: 87.3, title: '船磨', content: '船磨浮于黄河岸边水面，船上搭建房篷，配有水轮与石磨。依靠水力推动轮轴带动石磨碾磨面粉，这类古老水利设施如今已十分罕见。' },
+            { id: 19, x: 13.8, y: 95.0, title: '木筏', content: '木筏以原木捆扎成排，是黄河古航道传统水运工具，旧时在炳灵寺河段用于渡人和运输物资。' },
+            { id: 20, x: 23.2, y: 94.5, title: '粮筏', content: '粮筏以牛皮袋串联制作，是黄河上运送粮食的传统筏具。筏绘有5人，均为清代服饰，留发辫、戴草帽斗笠。反映清代黄河航运、物资流通的场景，和船磨共同构成黄河民生图景。' },
+            { id: 21, x: 63.5, y: 90.5, title: '大寺沟入口', content: '入大寺沟即唐述谷。大寺沟入口是炳灵寺石窟的沟谷门户，黄河从沟口流过，姊妹峰矗立两岸，由此沿沟向内，便可依次探访各处石窟与古建遗址。' },
+            { id: 22, x: 69.0, y: 96.6, title: '灯山寺', content: '大寺沟口南岸原有灯山寺，毁于战乱，但遗迹尚可依稀辨识。寺院附近巨石上镌刻有“天下第一桥”“万笏朝天”“龙窝”等摩崖题刻，刘家峡水库蓄水之后，这批石刻全部淹没于水下。' }
+        ];
+
+        const poiMarkerElements = new Map();
+
+        function initPOIMarkers() {
+            const layer = document.getElementById('poi-marker-layer');
+            POINTS.forEach(point => {
+                const marker = document.createElement('span');
+                marker.className = 'poi-marker';
+                marker.style.setProperty('--point-x', `${point.x}%`);
+                marker.style.setProperty('--point-y', `${point.y}%`);
+                layer.appendChild(marker);
+                poiMarkerElements.set(point.id, marker);
+            });
+        }
+
+        function initAudio() {
+            // 使用提供的音乐链接
+            bgm = new Audio('https://raw.githubusercontent.com/1430044353-a11y/sanxingdui/main/%E5%94%90%E5%A3%81%E6%AE%8B%E5%BD%A9.mp3');
+            bgm.crossOrigin = "anonymous";
+            bgm.loop = true;
+            bgm.volume = 0.3; 
+
+            fireSound = new Audio('https://www.soundjay.com/nature/fire-crackling-01.mp3');
+            fireSound.loop = true;
+            fireSound.volume = 0.1;
+
+            discoverySound = new Audio('https://www.soundjay.com/buttons/button-20.mp3');
+        }
+
+        async function tryPlayAudio(audio, volume = 1) {
+            try {
+                audio.volume = volume;
+                const playPromise = audio.play();
+                if (playPromise !== undefined) await playPromise;
+            } catch (err) { console.warn("音频播放被拦截", err); }
+        }
+
+        async function startSystem() {
+            if (isSystemStarted || interactionPhase !== 'grab') return;
+            clearPOISelection();
+            isSystemStarted = true;
+            interactionPhase = 'active';
+            // 从抓取阶段进入地图时，立即将光斑同步到当前手指位置，避免第一次靠近点位时沿用旧坐标。
+            currentX = targetX;
+            currentY = targetY;
+            document.body.classList.remove('mural-inactive', 'mural-ready', 'mural-dimming');
+            document.body.classList.add('mural-active');
+
+            const entryGuide = document.getElementById('entry-guide');
+            if (entryGuide) {
+                entryGuide.style.opacity = '0';
+                setTimeout(() => entryGuide.style.display = 'none', 500);
+            }
+
+            // 启动背景音乐
+            await tryPlayAudio(bgm, 0.3);
+            await tryPlayAudio(fireSound, 0.1);
+        }
+
+        function handleFirstInteraction() {
+            if (audioContextUnlocked) return;
+            audioContextUnlocked = true;
+            // 预加载/解锁音频
+            if (bgm) bgm.play().then(() => { if(!isSystemStarted) bgm.pause(); }).catch(()=>{});
+        }
+
+        function initHands() {
+            const video = document.getElementById('webcam-preview');
+            const canvasElement = document.getElementById('skeleton-canvas');
+            const canvasCtx = canvasElement.getContext('2d');
+            const camBox = document.getElementById('cam-box');
+            const statusTag = document.getElementById('status-tag');
+
+            const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6 });
+
+            hands.onResults((results) => {
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    isHandDetected = true;
+                    holdNoHandStatusAfterReturn = false;
+                    clearNoHandCountdown();
+                    if (camBox) camBox.classList.add('active');
+                    if (statusTag) statusTag.innerText = "识别中 · 音量增强";
+
+                    const landmarks = results.multiHandLandmarks[0];
+                    if (isSystemStarted || interactionPhase === 'grab') {
+                        const tip = landmarks[8];
+                        targetX = (1 - tip.x) * window.innerWidth;
+                        targetY = tip.y * window.innerHeight;
+                    }
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#d4af37', lineWidth: 3});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 2});
+
+                    // 擦除阶段：手掌移动会擦除第一张蒙尘壁画。
+                    if (interactionPhase === 'cleaning' || interactionPhase === 'dust') {
+                        eraseWithHand(landmarks);
+                    }
+
+                    // 抓取阶段：握拳持续两秒后点亮灯光。
+                    const isFist = [8, 12, 16, 20].every(index => landmarks[index].y > landmarks[index - 1].y);
+
+                    if (interactionPhase === 'grab') {
+                        const loader = document.getElementById('entry-guide');
+                        if (loader) {
+                            const circle = loader.querySelector('circle');
+                            if (isFist) {
+                                if (lastGrabTime === 0) lastGrabTime = Date.now();
+                                const elapsed = Date.now() - lastGrabTime;
+                                grabProgress = Math.min(elapsed / GRAB_DURATION, 1);
+                                circle.style.strokeDashoffset = 251.2 * (1 - grabProgress);
+                                if (grabProgress >= 1) startSystem();
+                            } else {
+                                lastGrabTime = 0;
+                                circle.style.strokeDashoffset = 251.2;
+                            }
+                        }
+                    }
+                } else {
+                    isHandDetected = false;
+                    if (camBox) camBox.classList.remove('active');
+                    if (statusTag) {
+                        if (holdNoHandStatusAfterReturn) {
+                            statusTag.innerText = '没有识别到手势';
+                        } else {
+                            startNoHandCountdown(statusTag);
+                        }
+                    }
+                    lastWipePoint = null;
+                    if (interactionPhase === 'grab') resetGrabProgress();
+                }
+                canvasCtx.restore();
+            });
+
+            new Camera(video, { 
+                onFrame: async () => {
+                    if (canvasElement.width !== video.videoWidth) {
+                        canvasElement.width = video.videoWidth;
+                        canvasElement.height = video.videoHeight;
+                    }
+                    await hands.send({ image: video });
+                }, 
+                width: 640, height: 480 
+            }).start();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 音量渐变逻辑
+            if (isSystemStarted && bgm) {
+                // 如果检测到手势，目标音量 1.0，否则 0.3
+                const targetVolume = isHandDetected ? 1.0 : 0.3;
+                // 使用插值实现平滑过渡 (lerp)
+                currentVolume += (targetVolume - currentVolume) * 0.05;
+                bgm.volume = Math.max(0, Math.min(1, currentVolume));
+            }
+
+            if (!isSystemStarted && interactionPhase !== 'grab') {
+                targetX = window.innerWidth / 2;
+                targetY = window.innerHeight * 0.45; 
+            }
+
+            currentX += (targetX - currentX) * 0.1;
+            currentY += (targetY - currentY) * 0.1;
+
+            // 光斑直接跟随识别到的食指，不再依赖莲花灯模型。
+            const fx = currentX;
+            const fy = currentY;
+            document.body.style.setProperty('--cursor-x', fx + 'px');
+            document.body.style.setProperty('--cursor-y', fy + 'px');
+            if (isSystemStarted && isHandDetected) {
+                checkPOI(fx, fy);
+            } else if (isSystemStarted) {
+                clearPOISelection();
+            }
+        }
+
+        function clearPOISelection() {
+            lastActiveId = null;
+            clearTimeout(triggerTimer);
+            triggerTimer = null;
+            poiMarkerElements.forEach(marker => marker.classList.remove('nearby'));
+            const panel = document.getElementById('info-panel');
+            if (panel) panel.classList.remove('visible');
+        }
+
+        function checkPOI(fx, fy) {
+            const xP = (fx / window.innerWidth) * 100;
+            const yP = (fy / window.innerHeight) * 100;
+            let activePOI = null;
+            POINTS.forEach(p => {
+                const dist = Math.sqrt(Math.pow(xP - p.x, 2) + Math.pow(yP - p.y, 2));
+                const marker = poiMarkerElements.get(p.id);
+                if (marker) marker.classList.toggle('nearby', dist < 7.5);
+                if (dist < 6) activePOI = p;
+            });
+            const panel = document.getElementById('info-panel');
+            if (activePOI) {
+                if (lastActiveId !== activePOI.id) {
+                    lastActiveId = activePOI.id;
+                    clearTimeout(triggerTimer);
+                    triggerTimer = setTimeout(() => {
+                        if (discoverySound) tryPlayAudio(discoverySound, 0.4);
+                        document.getElementById('info-title').innerText = activePOI.title;
+                        document.getElementById('info-content').innerText = activePOI.content;
+                        const compactLayout = window.innerWidth <= 560;
+                        const panelWidth = Math.min(compactLayout ? 220 : 240, window.innerWidth - (compactLayout ? 20 : 24));
+                        const panelHeight = panel.offsetHeight || (compactLayout ? 227 : 248);
+                        const edgeMargin = compactLayout ? 10 : 12;
+                        // 光斑半径约 115px，面板与光斑边缘再留出少量间距，避免遮挡灯台和光斑。
+                        const spotClearance = 128;
+                        const centerTop = fy - panelHeight / 2;
+                        const sideCandidates = fx > window.innerWidth / 2
+                            ? [
+                                { left: fx - spotClearance - panelWidth, top: centerTop },
+                                { left: fx + spotClearance, top: centerTop }
+                            ]
+                            : [
+                                { left: fx + spotClearance, top: centerTop },
+                                { left: fx - spotClearance - panelWidth, top: centerTop }
+                            ];
+                        const verticalCandidates = [
+                            { left: fx - panelWidth / 2, top: fy + spotClearance },
+                            { left: fx - panelWidth / 2, top: fy - spotClearance - panelHeight }
+                        ];
+                        const fitsViewport = (candidate) => (
+                            candidate.left >= edgeMargin &&
+                            candidate.left + panelWidth <= window.innerWidth - edgeMargin &&
+                            candidate.top >= 16 &&
+                            candidate.top + panelHeight <= window.innerHeight - 16
+                        );
+                        const placement = [...sideCandidates, ...verticalCandidates].find(fitsViewport) || sideCandidates[0];
+                        const left = Math.max(edgeMargin, Math.min(window.innerWidth - panelWidth - edgeMargin, placement.left));
+                        const top = Math.max(16, Math.min(window.innerHeight - panelHeight - 16, placement.top));
+                        panel.style.left = `${left}px`;
+                        panel.style.top = `${top}px`;
+                        panel.classList.add('visible');
+                    }, 1000);
+                }
+            } else {
+                lastActiveId = null;
+                clearTimeout(triggerTimer);
+                if (panel) panel.classList.remove('visible');
+            }
+        }
+
+        window.onload = () => {
+            initAudio();
+            initPOIMarkers();
+            // 首张蒙尘壁画独立加载，不等待 3D 模型回调，避免进度条完成后页面停滞。
+            beginCleaningStage();
+            initHands();
+            animate();
+        };
+
+        window.addEventListener('resize', () => {
+            resizeDustCanvas();
+        });
+
+        window.addEventListener('mousedown', handleFirstInteraction);
+        window.addEventListener('touchstart', handleFirstInteraction);
+        window.addEventListener('dblclick', startSystem);
+    </script>
+</body>
+</html>
