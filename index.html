@@ -35,7 +35,20 @@
         }
 
         .mural-active .mural-base { filter: brightness(1); }
-        .mural-ready .mural-base { filter: brightness(1); }
+        .mural-ready .mural-base {
+            filter: brightness(1);
+            /* 第二阶段仍以原稿作为擦除底图，避免第一阶段结束时提前露出前景。 */
+            background-image: url('https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%8E%9F%E7%A8%BF16%E6%AF%949.jpg');
+        }
+        .mural-revealed .mural-base {
+            filter: brightness(1);
+            background-image: url('https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%89%8D%E6%99%AF1-16%E6%AF%949.jpg');
+        }
+        /* 第二阶段擦除开始后，前景位于原稿擦除层下方，擦除才会显现下一层。 */
+        .mural-foreground-underlay .mural-base {
+            filter: brightness(1);
+            background-image: url('https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%89%8D%E6%99%AF1-16%E6%AF%949.jpg');
+        }
         .mural-dimming .mural-base { filter: brightness(0.16); }
         .cleaning-active .mural-base {
             filter: brightness(1);
@@ -140,7 +153,7 @@
             height: 100vh;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 1.4s ease-in-out;
+            transition: opacity 2.2s ease-in-out;
         }
 
         .dust-active #dust-canvas { opacity: 1; }
@@ -180,8 +193,8 @@
         }
         .dust-cleared #dust-guide { opacity: 0; }
         .dust-intro #dust-guide {
-            /* 等画面完成 1.4 秒柔和衔接后，再用 6 秒完成文字动画。 */
-            animation: dust-guide-reveal 6s cubic-bezier(0.22, 0.72, 0.3, 1) 1.4s both, dust-guide-shine 6s ease-in-out 1.4s both;
+            /* 画面开始柔和衔接后短暂等待，再用 6 秒完成文字动画。 */
+            animation: dust-guide-reveal 6s cubic-bezier(0.22, 0.72, 0.3, 1) 0.6s both, dust-guide-shine 6s ease-in-out 0.6s both;
         }
 
         @keyframes dust-guide-reveal {
@@ -215,24 +228,40 @@
         }
 
         .cleaning-active #clean-guide { opacity: 1; }
+        .cleaning-transition #clean-guide { opacity: 0; }
 
         .mural-reveal img {
             width: 100vw;
             height: 100vh;
             object-fit: cover;
+            --reveal-radius: 115px;
             -webkit-mask-image: radial-gradient(
-                circle 115px at var(--cursor-x) var(--cursor-y), 
+                circle var(--reveal-radius) at var(--cursor-x) var(--cursor-y), 
                 black 0%, 
                 rgba(0,0,0,0.95) 30%, 
                 rgba(0,0,0,0.4) 70%, 
                 transparent 100%
             );
             mask-image: radial-gradient(
-                circle 115px at var(--cursor-x) var(--cursor-y), 
+                circle var(--reveal-radius) at var(--cursor-x) var(--cursor-y), 
                 black 0%, 
                 rgba(0,0,0,0.95) 30%, 
                 rgba(0,0,0,0.4) 70%, 
                 transparent 100%
+            );
+        }
+
+        .exploration-complete .mural-reveal img {
+            /* 全景显示仍从触发时的手电筒光斑向外扩散，而不是跳到画面中心。 */
+            -webkit-mask-image: radial-gradient(
+                circle var(--reveal-radius) at var(--reveal-focus-x, var(--cursor-x)) var(--reveal-focus-y, var(--cursor-y)),
+                black 0%,
+                black 100%
+            );
+            mask-image: radial-gradient(
+                circle var(--reveal-radius) at var(--reveal-focus-x, var(--cursor-x)) var(--reveal-focus-y, var(--cursor-y)),
+                black 0%,
+                black 100%
             );
         }
 
@@ -262,7 +291,7 @@
             margin-bottom: 20px;
         }
 
-        .grab-hand-gif {
+        .grab-hand-image {
             position: absolute;
             left: 50%;
             top: 50%;
@@ -403,6 +432,63 @@
             box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
         }
 
+        .exploration-progress {
+            position: absolute;
+            right: 24px;
+            bottom: 153px;
+            width: 160px;
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(6px);
+            pointer-events: none;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .mural-active .exploration-progress {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .exploration-progress-label {
+            margin-bottom: 6px;
+            color: rgba(245, 217, 120, 0.9);
+            font-size: 10px;
+            line-height: 1.2;
+            letter-spacing: 0.08em;
+            text-align: right;
+            white-space: nowrap;
+            text-shadow: 0 1px 5px rgba(0, 0, 0, 0.75);
+        }
+
+        .exploration-progress-track {
+            width: 100%;
+            height: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(212, 175, 55, 0.45);
+            border-radius: 5px;
+            background: rgba(18, 14, 7, 0.78);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+        }
+
+        .exploration-progress-fill {
+            width: 0;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #9a6d18, #f8df82, #fff1b0);
+            box-shadow: 0 0 9px rgba(242, 184, 54, 0.8);
+            transition: width 0.6s ease;
+        }
+
+        @media (max-width: 560px) {
+            .exploration-progress {
+                right: 16px;
+                bottom: 153px;
+                width: 150px;
+            }
+
+            .exploration-progress-label { font-size: 9px; }
+        }
+
         #webcam-preview {
             position: absolute;
             inset: 0;
@@ -502,7 +588,7 @@
             <svg id="grab-loader" width="100" height="100">
                 <circle cx="50" cy="50" r="40"></circle>
             </svg>
-            <img class="grab-hand-gif" src="grab-hand.gif" alt="手势抓取动态引导">
+            <img class="grab-hand-image" src="https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E6%8A%93%E5%8F%96%E6%89%8B%E5%8A%BF.png" alt="手势抓取引导">
         </div>
         <div class="guide-text">
             <span>画已入窟</span>
@@ -514,7 +600,7 @@
     <div class="mural-overlay"></div>
     <canvas id="dust-canvas" aria-hidden="true"></canvas>
     <div id="clean-guide">古画沾污，请抬手涤净，拭去尘瑕</div>
-    <div id="dust-guide">壁画蒙尘，请伸手轻挥，拂尘显像</div>
+    <div id="dust-guide">古画蒙尘，请伸手轻挥，拂尘显像</div>
 
     <div class="mural-reveal">
         <img id="reveal-image" src="https://raw.githubusercontent.com/leekeelam03-dev/leekee/main/%E5%90%8E%E6%99%AF1-%E9%AB%98%E6%B8%85%E6%B7%B7%E5%90%88.jpg" alt="高清混合壁画涂层">
@@ -525,6 +611,13 @@
         <div class="text-[10px] uppercase tracking-[2px] opacity-60 mb-2">文物志 · 典藏</div>
         <h2 id="info-title"></h2>
         <p id="info-content"></p>
+    </div>
+
+    <div class="exploration-progress" id="exploration-progress" aria-live="polite">
+        <div class="exploration-progress-label" id="exploration-progress-label">已探明0%的炳灵胜境</div>
+        <div class="exploration-progress-track" role="progressbar" aria-label="炳灵胜境探索进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="exploration-progress-fill" id="exploration-progress-fill"></div>
+        </div>
     </div>
 
     <!-- 预览窗 -->
@@ -544,6 +637,7 @@
         let isSystemStarted = false; 
         let isHandDetected = false;
         let currentVolume = 0.3; // 初始音量 30%
+        const INTRO_MUSIC_VOLUME = 0.12;
         let interactionPhase = 'loading';
         let dustImage = null;
         let dustContext = document.getElementById('dust-canvas').getContext('2d');
@@ -555,9 +649,13 @@
         let lastWipeCoverageCheck = 0;
         let lastActiveId = null;
         let triggerTimer = null;
+        const discoveredPOIs = new Set();
+        let fullRevealTriggered = false;
         let grabProgress = 0; 
         const GRAB_DURATION = 2000; 
         let lastGrabTime = 0;
+        let okGestureSince = 0;
+        const OK_GESTURE_HOLD_MS = 900;
         let audioContextUnlocked = false;
         let noHandTimer = null;
         let noHandCountdown = 6;
@@ -565,7 +663,8 @@
         let holdNoHandStatusAfterReturn = false;
 
         function canCountDownForMissingHand() {
-            return ['cleaning', 'dust-intro', 'dust', 'dimming', 'grab', 'active'].includes(interactionPhase);
+            // dust-intro 是画面与文字动画阶段，此时不计无手势倒计时。
+            return ['cleaning', 'dust', 'dimming', 'grab', 'active'].includes(interactionPhase);
         }
 
         function clearNoHandCountdown() {
@@ -574,6 +673,56 @@
                 noHandTimer = null;
             }
             noHandCountdown = 6;
+        }
+
+        function updateExplorationProgress() {
+            const percent = Math.round((discoveredPOIs.size / POINTS.length) * 100);
+            const label = document.getElementById('exploration-progress-label');
+            const fill = document.getElementById('exploration-progress-fill');
+            const track = document.querySelector('.exploration-progress-track');
+            if (label) {
+                label.innerText = percent >= 100
+                    ? '目前100%，已探明全境'
+                    : percent >= 70
+                        ? `目前${percent}%，ok手势，可直接探明全境`
+                        : `已探明${percent}%的炳灵胜境`;
+            }
+            if (fill) fill.style.width = `${percent}%`;
+            if (track) track.setAttribute('aria-valuenow', String(percent));
+            if (percent >= 100) revealEntireExploration();
+        }
+
+        function revealEntireExploration() {
+            if (fullRevealTriggered || !isSystemStarted) return;
+            const revealImage = document.querySelector('.mural-reveal img');
+            if (!revealImage) return;
+
+            fullRevealTriggered = true;
+            // 锁定触发瞬间的光斑位置，让 OK 手势和 100% 完成都从当前光斑向外扩散。
+            revealImage.style.setProperty('--reveal-focus-x', `${currentX}px`);
+            revealImage.style.setProperty('--reveal-focus-y', `${currentY}px`);
+            document.body.classList.add('exploration-complete');
+
+            const start = performance.now();
+            // 放慢整幅后景的显现，让光斑从局部逐步、柔和地扩散到全画面。
+            const duration = 5000;
+            const startRadius = 115;
+            const endRadius = Math.hypot(window.innerWidth, window.innerHeight) * 1.15;
+            const animateReveal = (now) => {
+                const progress = Math.min((now - start) / duration, 1);
+                // smoothstep 让开始和结束都更舒缓，避免前半段显得过快。
+                const eased = progress * progress * (3 - 2 * progress);
+                revealImage.style.setProperty('--reveal-radius', `${startRadius + (endRadius - startRadius) * eased}px`);
+                if (progress < 1) window.requestAnimationFrame(animateReveal);
+            };
+            window.requestAnimationFrame(animateReveal);
+        }
+
+        function isOkGesture(landmarks) {
+            const pinchDistance = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
+            const extendedFingers = [12, 16, 20].every(index => landmarks[index].y < landmarks[index - 2].y);
+            // 收紧拇指与食指的捏合距离，避免擦除时的普通张手被误判为 OK。
+            return pinchDistance < 0.045 && extendedFingers;
         }
 
         function showNoHandStatus(statusTag, seconds) {
@@ -609,8 +758,19 @@
             interactionPhase = 'resetting';
             lastGrabTime = 0;
             grabProgress = 0;
+            okGestureSince = 0;
             lastWipePoint = null;
             clearPOISelection();
+            discoveredPOIs.clear();
+            updateExplorationProgress();
+            fullRevealTriggered = false;
+            document.body.classList.remove('exploration-complete');
+            const revealImage = document.querySelector('.mural-reveal img');
+            if (revealImage) {
+                revealImage.style.removeProperty('--reveal-radius');
+                revealImage.style.removeProperty('--reveal-focus-x');
+                revealImage.style.removeProperty('--reveal-focus-y');
+            }
 
             const panel = document.getElementById('info-panel');
             if (panel) panel.classList.remove('visible');
@@ -621,7 +781,7 @@
             }
             const circle = document.querySelector('#entry-guide circle');
             if (circle) circle.style.strokeDashoffset = '251.2';
-            document.body.classList.remove('mural-active', 'mural-ready', 'mural-dimming', 'grab-ready', 'dust-cleared', 'dust-intro', 'dust-active', 'cleaning-transition');
+            document.body.classList.remove('mural-active', 'mural-ready', 'mural-revealed', 'mural-foreground-underlay', 'mural-dimming', 'grab-ready', 'dust-cleared', 'dust-intro', 'dust-active', 'cleaning-transition');
             document.body.classList.add('cleaning-active');
             const statusTag = document.getElementById('status-tag');
             if (statusTag) statusTag.innerText = '没有识别到手势';
@@ -667,23 +827,26 @@
             const image = new Image();
             image.onload = () => {
                 dustImage = image;
+                // 第二阶段过渡和文字动画期间不计时，清除第一阶段可能残留的计时器。
+                clearNoHandCountdown();
                 // 保持上一阶段的同一张原稿画面可见，先完成新画布绘制再切换状态。
                 resetWipeCanvas();
                 resizeDustCanvas();
                 interactionPhase = 'dust-intro';
                 document.body.classList.add('mural-ready', 'dust-active', 'dust-intro');
-                // 先让第二阶段画布在同一张原稿上柔和显现，再切换到底层前景图，避免闪黑或露出错误画面。
-                document.body.classList.remove('cleaning-transition');
+                // 保持上一阶段画面作为过渡底图，等第二阶段画布和文字节奏准备好后再统一切换。
                 window.setTimeout(() => {
                     if (interactionPhase !== 'dust-intro') return;
-                    document.body.classList.remove('cleaning-active');
-                }, 1400);
+                    document.body.classList.remove('cleaning-active', 'cleaning-transition');
+                }, 2200);
                 finishLoadingStage();
                 window.setTimeout(() => {
                     if (interactionPhase !== 'dust-intro') return;
                     interactionPhase = 'dust';
                     document.body.classList.remove('dust-intro');
-                }, 7400);
+                    // 文字动画完成后才放入前景底图；此时原稿画布仍完整覆盖它。
+                    document.body.classList.add('mural-foreground-underlay');
+                }, 6600);
             };
             image.onerror = (error) => {
                 console.error('蒙尘壁画加载失败。', error);
@@ -731,9 +894,11 @@
                 y: point.y + landmarks[index].y / palmLandmarks.length
             }), { x: 0, y: 0 });
             const point = { x: (1 - center.x) * width, y: center.y * height };
-            const radius = Math.max(64, Math.min(132, Math.min(width, height) * 0.14));
-
             const brushStage = interactionPhase === 'cleaning';
+            // 第一阶段毛笔笔刷稍大，方便挥手清除；第二阶段保持原有光斑擦除范围。
+            const radius = brushStage
+                ? Math.max(96, Math.min(198, Math.min(width, height) * 0.21))
+                : Math.max(64, Math.min(132, Math.min(width, height) * 0.14));
             dustContext.save();
             dustContext.globalCompositeOperation = 'destination-out';
             dustContext.lineCap = 'round';
@@ -803,11 +968,13 @@
                 document.body.classList.add('cleaning-transition');
                 setTimeout(() => {
                     if (interactionPhase === 'cleaned') beginDustStage();
-                }, 1400);
+                }, 2200);
                 return;
             }
             interactionPhase = 'revealed';
             lastWipePoint = null;
+            // 第二阶段擦除完成后，才把底图切换为前景，并由擦除层淡出完成显现。
+            document.body.classList.add('mural-revealed');
             document.body.classList.remove('dust-active');
             document.body.classList.add('dust-cleared');
 
@@ -835,11 +1002,11 @@
 
         const POINTS = [
             { id: 1, x: 27.9, y: 49.3, title: '《法苑珠林·伽蓝篇·感应缘》——[唐]道世', content: '《法苑珠林·伽蓝篇·感应缘》中写道“晋初河州唐述谷寺者。在今河州西北五十里。度风（凤）林津登长夷岭南望名积石山。即禹贡导之极地也。众峰竞出各有异势。或如宝塔。或如层楼。”' },
-            { id: 2, x: 14.7, y: 60.3, title: '河西走廊南段古道起点', content: '这条山间小道，是丝绸之路南段古道遗存，现通青海民和境。古道经天水、临洮、临夏，至炳灵寺渡黄河进入今青海省境，可达河西走廊。这条古道，是中原连通河湟、河西的交通要道，也是当年僧人与商旅往来的必经之路。' },
+            { id: 2, x: 14.7, y: 60.3, title: '河西走廊南段古道起点', content: '这条山间小道是丝绸之路南段古道遗存。古道经天水、临夏，至炳灵寺渡黄河进入今青海省境，可达河西走廊。这条古道，是中原连通河湟、河西的交通要道，也是当年僧人与商旅往来的必经之路。' },
             { id: 3, x: 6.3, y: 62.6, title: '炳灵寺・西方境', content: '西方境从顶至底层，共有七座殿堂廊庭。这些建筑是在明成化年间修起的文殊菩萨殿、观音殿、普贤殿、韦驮殿等，体现汉藏信仰并存。西方境以下地带现名曰禅堂，溯源于唐代。清代战乱后建筑皆不存。' },
-            { id: 4, x: 24.9, y: 67.7, title: '薛家昂欠 ——下寺伽蓝活佛府邸', content: '弯曲小道向上可达炳灵寺下寺伽蓝，此处为活佛薛法台的驻锡居所，俗呼薛家昂欠，原有楼阁七间。此地紧邻西方境、禅堂院，处在山间古道之上，是清代下寺区域藏传活佛的居住、行法之地。昂欠为安多藏区活佛府邸专称，这组楼阁建筑现已不存，仅留存遗址地貌。' },
-            { id: 5, x: 40.5, y: 67.3, title: '云家昂欠 ——下寺伽蓝僧舍', content: '与薛家昂欠隔一小沟，即为云法台住地，称作云家昂欠，伽蓝僧舍修建于台地之上。薛、云两处昂欠府邸及配套僧舍，旧时建筑壮观、功能完备，但在文革期间均被拆毁。清末至民国时期，下寺薛、云两位活佛，因争夺水帘洞法床主导权，两派产生分歧，长期发生纠纷。' },
-            { id: 6, x: 38.6, y: 50.9, title: '水帘洞', content: '由薛家昂欠东北小道可达水帘洞，原有两层建筑。明成化三年名“圆觉洞”，弘治元年名“救度洞”，名称记载于明正德十二年《重修灵岩寺碑记》。由于地处西陲，古建屡遭战火，屡建屡毁；民国重修的水帘洞于文革损毁，现由当地群众集资重建。' },
+            { id: 4, x: 24.9, y: 67.7, title: '薛家昂欠 ——下寺伽蓝活佛府邸', content: '弯曲小道向上可达炳灵寺下寺伽蓝，此处为活佛薛法台的驻锡居所，俗呼薛家昂欠，昂欠为安多藏区活佛府邸专称。原有楼阁七间，处在山间古道之上，是清代下寺区域藏传活佛的居住、行法之地。现已不存。' },
+            { id: 5, x: 40.5, y: 67.3, title: '云家昂欠 ——下寺伽蓝僧舍', content: '与薛家昂欠隔一小沟，即为云法台住地，称作云家昂欠。薛、云两处昂欠府邸及僧舍，旧时建筑壮观、功能完备，但在文革期间均被拆毁。清末至民国时期，薛、云两位活佛，因争夺水帘洞法床主导权，长期发生纠纷。' },
+            { id: 6, x: 38.6, y: 50.9, title: '水帘洞', content: '由薛家昂欠东北小道可达。明成化三年名“圆觉洞”，弘治元年名“救度洞”，记载于《重修灵岩寺碑记》。由于地处西陲而屡遭战火。民国重修的水帘洞于文革损毁，现由群众集资重建。' },
             { id: 7, x: 50.7, y: 73.8, title: '窝多桥1', content: '沟谷内旧时两座人行小桥，为古代通往老君洞山道必经通道。' },
             { id: 8, x: 57.1, y: 76.7, title: '窝多桥2', content: '沟谷内旧时两座人行小桥，为古代通往老君洞山道必经通道。' },
             { id: 9, x: 50.5, y: 36.7, title: '大华山石窟群', content: '巍峨高峻的大华山。山体丹红色的陡峭崖壁上密布石室与栈道，这就是炳灵寺石窟的核心区域。石窟现存编号 184 个窟龛，近 300 身石雕彩塑，记录了炳灵寺自西秦开窟造像的时代变迁。' },
@@ -877,7 +1044,8 @@
             bgm = new Audio('https://raw.githubusercontent.com/1430044353-a11y/sanxingdui/main/%E5%94%90%E5%A3%81%E6%AE%8B%E5%BD%A9.mp3');
             bgm.crossOrigin = "anonymous";
             bgm.loop = true;
-            bgm.volume = 0.3; 
+            // 第一阶段使用更轻的环境音乐，进入点灯阶段后再提升音量。
+            bgm.volume = INTRO_MUSIC_VOLUME;
 
             fireSound = new Audio('https://www.soundjay.com/nature/fire-crackling-01.mp3');
             fireSound.loop = true;
@@ -899,6 +1067,7 @@
             clearPOISelection();
             isSystemStarted = true;
             interactionPhase = 'active';
+            okGestureSince = 0;
             // 从抓取阶段进入地图时，立即将光斑同步到当前手指位置，避免第一次靠近点位时沿用旧坐标。
             currentX = targetX;
             currentY = targetY;
@@ -919,8 +1088,11 @@
         function handleFirstInteraction() {
             if (audioContextUnlocked) return;
             audioContextUnlocked = true;
-            // 预加载/解锁音频
-            if (bgm) bgm.play().then(() => { if(!isSystemStarted) bgm.pause(); }).catch(()=>{});
+            // 在用户首次触碰页面时解锁并开始轻柔环境音乐；浏览器禁止自动播放时静默等待下一次操作。
+            if (bgm) {
+                bgm.volume = INTRO_MUSIC_VOLUME;
+                bgm.play().catch(() => {});
+            }
         }
 
         function initHands() {
@@ -949,6 +1121,13 @@
                         const tip = landmarks[8];
                         targetX = (1 - tip.x) * window.innerWidth;
                         targetY = tip.y * window.innerHeight;
+                    }
+                    const canUseOkReveal = isSystemStarted && interactionPhase === 'active' && discoveredPOIs.size / POINTS.length >= 0.7;
+                    if (canUseOkReveal && isOkGesture(landmarks)) {
+                        if (!okGestureSince) okGestureSince = Date.now();
+                        if (Date.now() - okGestureSince >= OK_GESTURE_HOLD_MS) revealEntireExploration();
+                    } else {
+                        okGestureSince = 0;
                     }
                     drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#d4af37', lineWidth: 3});
                     drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 2});
@@ -979,6 +1158,7 @@
                     }
                 } else {
                     isHandDetected = false;
+                    okGestureSince = 0;
                     if (camBox) camBox.classList.remove('active');
                     if (statusTag) {
                         if (holdNoHandStatusAfterReturn) {
@@ -1063,6 +1243,8 @@
                     clearTimeout(triggerTimer);
                     triggerTimer = setTimeout(() => {
                         if (discoverySound) tryPlayAudio(discoverySound, 0.4);
+                        discoveredPOIs.add(activePOI.id);
+                        updateExplorationProgress();
                         document.getElementById('info-title').innerText = activePOI.title;
                         document.getElementById('info-content').innerText = activePOI.content;
                         const compactLayout = window.innerWidth <= 560;
